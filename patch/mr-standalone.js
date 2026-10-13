@@ -352,6 +352,200 @@
     });
   }
 
+  // ================================================================
+  //  酷狗音乐（搜索/歌词用公开接口；播放走移动端点，key = md5(hash + "kgcloud")）
+  // ================================================================
+
+  var KG_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
+  var KG_HEADERS = { 'Referer': 'https://www.kugou.com/', 'User-Agent': KG_UA };
+  var kgState = { mid: '', dfid: '-', userid: '', token: '' };
+
+  // ---- MD5（纯 JS，供酷狗 key / mid 使用） ----
+  function md5Hex(input) {
+    var utf8 = unescape(encodeURIComponent(String(input)));
+    var bytes = [];
+    for (var i = 0; i < utf8.length; i++) bytes.push(utf8.charCodeAt(i) & 255);
+    var words = [];
+    for (var j = 0; j < bytes.length; j++) {
+      words[j >> 2] = (words[j >> 2] || 0) | (bytes[j] << ((j % 4) * 8));
+    }
+    var bitLen = bytes.length * 8;
+    words[bitLen >> 5] = (words[bitLen >> 5] || 0) | (0x80 << (bitLen % 32));
+    words[(((bitLen + 64) >>> 9) << 4) + 14] = bitLen;
+
+    function rl(n, c) { return (n << c) | (n >>> (32 - c)); }
+    function au(x, y) {
+      var l = (x & 0xFFFF) + (y & 0xFFFF);
+      var m = (x >> 16) + (y >> 16) + (l >> 16);
+      return (m << 16) | (l & 0xFFFF);
+    }
+    function cmn(q, a, b, x, s, t) { return au(rl(au(au(a, q), au(x, t)), s), b); }
+    function ff(a, b, c, d, x, s, t) { return cmn((b & c) | (~b & d), a, b, x, s, t); }
+    function gg(a, b, c, d, x, s, t) { return cmn((b & d) | (c & ~d), a, b, x, s, t); }
+    function hh(a, b, c, d, x, s, t) { return cmn(b ^ c ^ d, a, b, x, s, t); }
+    function ii(a, b, c, d, x, s, t) { return cmn(c ^ (b | ~d), a, b, x, s, t); }
+
+    var a = 1732584193, b = -271733879, c = -1732584194, d = 271733878;
+    for (var k = 0; k < words.length; k += 16) {
+      var oa = a, ob = b, oc = c, od = d;
+      a = ff(a, b, c, d, words[k] || 0, 7, -680876936); d = ff(d, a, b, c, words[k + 1] || 0, 12, -389564586);
+      c = ff(c, d, a, b, words[k + 2] || 0, 17, 606105819); b = ff(b, c, d, a, words[k + 3] || 0, 22, -1044525330);
+      a = ff(a, b, c, d, words[k + 4] || 0, 7, -176418897); d = ff(d, a, b, c, words[k + 5] || 0, 12, 1200080426);
+      c = ff(c, d, a, b, words[k + 6] || 0, 17, -1473231341); b = ff(b, c, d, a, words[k + 7] || 0, 22, -45705983);
+      a = ff(a, b, c, d, words[k + 8] || 0, 7, 1770035416); d = ff(d, a, b, c, words[k + 9] || 0, 12, -1958414417);
+      c = ff(c, d, a, b, words[k + 10] || 0, 17, -42063); b = ff(b, c, d, a, words[k + 11] || 0, 22, -1990404162);
+      a = ff(a, b, c, d, words[k + 12] || 0, 7, 1804603682); d = ff(d, a, b, c, words[k + 13] || 0, 12, -40341101);
+      c = ff(c, d, a, b, words[k + 14] || 0, 17, -1502002290); b = ff(b, c, d, a, words[k + 15] || 0, 22, 1236535329);
+      a = gg(a, b, c, d, words[k + 1] || 0, 5, -165796510); d = gg(d, a, b, c, words[k + 6] || 0, 9, -1069501632);
+      c = gg(c, d, a, b, words[k + 11] || 0, 14, 643717713); b = gg(b, c, d, a, words[k] || 0, 20, -373897302);
+      a = gg(a, b, c, d, words[k + 5] || 0, 5, -701558691); d = gg(d, a, b, c, words[k + 10] || 0, 9, 38016083);
+      c = gg(c, d, a, b, words[k + 15] || 0, 14, -660478335); b = gg(b, c, d, a, words[k + 4] || 0, 20, -405537848);
+      a = gg(a, b, c, d, words[k + 9] || 0, 5, 568446438); d = gg(d, a, b, c, words[k + 14] || 0, 9, -1019803690);
+      c = gg(c, d, a, b, words[k + 3] || 0, 14, -187363961); b = gg(b, c, d, a, words[k + 8] || 0, 20, 1163531501);
+      a = gg(a, b, c, d, words[k + 13] || 0, 5, -1444681467); d = gg(d, a, b, c, words[k + 2] || 0, 9, -51403784);
+      c = gg(c, d, a, b, words[k + 7] || 0, 14, 1735328473); b = gg(b, c, d, a, words[k + 12] || 0, 20, -1926607734);
+      a = hh(a, b, c, d, words[k + 5] || 0, 4, -378558); d = hh(d, a, b, c, words[k + 8] || 0, 11, -2022574463);
+      c = hh(c, d, a, b, words[k + 11] || 0, 16, 1839030562); b = hh(b, c, d, a, words[k + 14] || 0, 23, -35309556);
+      a = hh(a, b, c, d, words[k + 1] || 0, 4, -1530992060); d = hh(d, a, b, c, words[k + 4] || 0, 11, 1272893353);
+      c = hh(c, d, a, b, words[k + 7] || 0, 16, -155497632); b = hh(b, c, d, a, words[k + 10] || 0, 23, -1094730640);
+      a = hh(a, b, c, d, words[k + 13] || 0, 4, 681279174); d = hh(d, a, b, c, words[k] || 0, 11, -358537222);
+      c = hh(c, d, a, b, words[k + 3] || 0, 16, -722521979); b = hh(b, c, d, a, words[k + 6] || 0, 23, 76029189);
+      a = hh(a, b, c, d, words[k + 9] || 0, 4, -640364487); d = hh(d, a, b, c, words[k + 12] || 0, 11, -421815835);
+      c = hh(c, d, a, b, words[k + 15] || 0, 16, 530742520); b = hh(b, c, d, a, words[k + 2] || 0, 23, -995338651);
+      a = ii(a, b, c, d, words[k] || 0, 6, -198630844); d = ii(d, a, b, c, words[k + 7] || 0, 10, 1126891415);
+      c = ii(c, d, a, b, words[k + 14] || 0, 15, -1416354905); b = ii(b, c, d, a, words[k + 5] || 0, 21, -57434055);
+      a = ii(a, b, c, d, words[k + 12] || 0, 6, 1700485571); d = ii(d, a, b, c, words[k + 3] || 0, 10, -1894986606);
+      c = ii(c, d, a, b, words[k + 10] || 0, 15, -1051523); b = ii(b, c, d, a, words[k + 1] || 0, 21, -2054922799);
+      a = ii(a, b, c, d, words[k + 8] || 0, 6, 1873313359); d = ii(d, a, b, c, words[k + 15] || 0, 10, -30611744);
+      c = ii(c, d, a, b, words[k + 6] || 0, 15, -1560198380); b = ii(b, c, d, a, words[k + 13] || 0, 21, 1309151649);
+      a = ii(a, b, c, d, words[k + 4] || 0, 6, -145523070); d = ii(d, a, b, c, words[k + 11] || 0, 10, -1120210379);
+      c = ii(c, d, a, b, words[k + 2] || 0, 15, 718787259); b = ii(b, c, d, a, words[k + 9] || 0, 21, -343485551);
+      a = au(a, oa); b = au(b, ob); c = au(c, oc); d = au(d, od);
+    }
+    function hex(n) {
+      var s = '';
+      for (var i = 0; i < 4; i++) s += ('0' + ((n >> (i * 8)) & 255).toString(16)).slice(-2);
+      return s;
+    }
+    return hex(a) + hex(b) + hex(c) + hex(d);
+  }
+
+  function kugouCloudKey(hash) { return md5Hex(String(hash || '') + 'kgcloud'); }
+
+  function kgMid() {
+    if (!kgState.mid) kgState.mid = md5Hex(String(Date.now()) + String(Math.random()));
+    return kgState.mid;
+  }
+
+  function kgCookie() {
+    return 'kg_mid=' + kgMid() + '; kg_dfid=' + (kgState.dfid || '-');
+  }
+
+  function kugouCover(raw, size) {
+    var u = String(raw || '').trim();
+    if (!u) return '';
+    return u.replace(/\{size\}/g, String(size || 240));
+  }
+
+  function stripKgHtml(text) {
+    return String(text || '').replace(/<[^>]*>/g, '').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').trim();
+  }
+
+  function mapKugouArtists(item) {
+    item = item || {};
+    if (Array.isArray(item.Singers)) {
+      return item.Singers.map(function (s) {
+        s = s || {};
+        return { id: s.id, name: stripKgHtml(s.name || s.SingerName || '') };
+      }).filter(function (a) { return a.name; });
+    }
+    var names = String(item.SingerName || '').split(/、|\/|,| feat\.? /i).map(stripKgHtml).filter(Boolean);
+    var ids = Array.isArray(item.SingerId) ? item.SingerId : [];
+    return names.map(function (name, i) { return { id: ids[i] || '', name: name }; });
+  }
+
+  function mapKugouTrack(item) {
+    item = item || {};
+    var artists = mapKugouArtists(item);
+    var hash = item.FileHash || item.hash || '';
+    var albumId = item.AlbumID != null ? String(item.AlbumID) : '';
+    var mixSongId = item.MixSongID != null ? String(item.MixSongID) : '';
+    var albumAudioId = /^\d+$/.test(mixSongId) ? mixSongId : String(item.EMixSongID || item.AlbumAudioID || item.album_audio_id || mixSongId || '');
+    return {
+      provider: 'kugou', source: 'kugou', type: 'kugou',
+      id: hash || mixSongId || albumAudioId,
+      hash: hash, fileHash: hash,
+      albumId: albumId, album_id: albumId,
+      mixSongId: mixSongId, albumAudioId: albumAudioId, album_audio_id: albumAudioId,
+      audioId: item.Audioid || item.Scid || '',
+      hqHash: item.HQFileHash || '',
+      sqHash: item.SQFileHash || '',
+      resHash: item.ResFileHash || '',
+      name: stripKgHtml(item.SongName || item.FileName || item.OriSongName || ''),
+      artist: artists.map(function (a) { return a.name; }).join(' / ') || stripKgHtml(item.SingerName || ''),
+      artists: artists,
+      artistId: artists[0] && artists[0].id,
+      album: stripKgHtml(item.AlbumName || ''),
+      cover: kugouCover(item.Image || item.AlbumImage || '', 240),
+      duration: (Number(item.Duration) || 0) * 1000,
+      popularity: Number(item.HeatLevel) || 60,
+      fee: (Number(item.Privilege) || 0) >= 8 ? 1 : 0,
+      privilege: Number(item.Privilege) || 0,
+      playable: false
+    };
+  }
+
+  function kugouSearchSongs(kw, limit, offset) {
+    var page = Math.floor(offset / limit) + 1;
+    var url = 'https://songsearch.kugou.com/song_search_v2?keyword=' + encodeURIComponent(kw) +
+      '&page=' + page + '&pagesize=' + limit + '&format=json&platform=WebFilter';
+    return nativeHttp(url, { headers: KG_HEADERS }).then(function (r) {
+      var d = JSON.parse(r.text);
+      var lists = (d.data && d.data.lists) || [];
+      return lists.map(mapKugouTrack).filter(function (s) { return s.name && (s.hash || s.mixSongId); });
+    });
+  }
+
+  function kugouSongUrl(hash, albumId) {
+    var url = 'https://m.kugou.com/app/i/getSongInfo.php?cmd=playInfo&hash=' + encodeURIComponent(hash) +
+      '&key=' + kugouCloudKey(hash) +
+      '&album_id=' + encodeURIComponent(albumId || '0') +
+      '&pid=1&forceDown=0&vip=65530';
+    var headers = { 'Referer': 'https://m.kugou.com/', 'User-Agent': KG_UA, 'Cookie': kgCookie() };
+    if (kgState.userid) { url += '&userid=' + encodeURIComponent(kgState.userid); }
+    if (kgState.token) { url += '&token=' + encodeURIComponent(kgState.token); }
+    return nativeHttp(url, { headers: headers }).then(function (r) {
+      var d = JSON.parse(r.text);
+      var link = String(d.url || d.backup_url || '').replace(/\\\//g, '/').trim();
+      if (Number(d.status) === 1 && link) {
+        return { url: link.replace(/^http:\/\//i, 'https://'), level: 'standard', quality: '标准' };
+      }
+      var err = String(d.error || d.errmsg || '');
+      return { url: '', error: err, vipRequired: /付费|会员|vip/i.test(err) };
+    });
+  }
+
+  function kugouLyric(hash) {
+    var searchUrl = 'https://krcs.kugou.com/search?ver=1&man=yes&client=mobi&keyword=&duration=&hash=' + encodeURIComponent(hash);
+    return nativeHttp(searchUrl, { headers: KG_HEADERS }).then(function (r) {
+      var d = JSON.parse(r.text);
+      var cands = d.candidates || [];
+      if (!cands.length) return { provider: 'kugou', lyric: '', tlyric: '' };
+      var c = cands[0];
+      var dl = 'https://lyrics.kugou.com/download?ver=1&client=pc&id=' + encodeURIComponent(c.id) +
+        '&accesskey=' + encodeURIComponent(c.accesskey) + '&fmt=lrc&charset=utf8';
+      return nativeHttp(dl, { headers: KG_HEADERS }).then(function (r2) {
+        var d2 = JSON.parse(r2.text);
+        var content = '';
+        try { content = decodeURIComponent(escape(atob(d2.content || ''))); } catch (e) { content = ''; }
+        return {
+          provider: 'kugou', lyric: content, tlyric: '',
+          yrc: '', ytlrc: '', romalrc: '', yromalrc: '', source: 'kugou'
+        };
+      });
+    });
+  }
+
   function qqLyric(mid) {
     var url = 'https://c.y.qq.com/lyric/fcgi-bin/fcg_query_lyric_new.fcg?songmid=' + encodeURIComponent(mid) + '&format=json&nobase64=1';
     // 注意：歌词接口要浏览器 UA，QQMusic 客户端 UA 会被拒（返回空）
@@ -623,6 +817,86 @@
       return done.then(function () { return { code: 0, ok: true, loggedIn: false }; });
     },
 
+    // ---------- 酷狗音乐 ----------
+    '/api/kugou/search': function (p) {
+      var kw = p.get('keywords') || '';
+      var limit = Math.max(4, Math.min(20, parseInt(p.get('limit') || '12', 10) || 12));
+      var offset = Math.max(0, parseInt(p.get('offset') || '0', 10) || 0);
+      if (!kw) return Promise.resolve({ provider: 'kugou', songs: [], offset: offset, limit: limit, nextOffset: offset, hasMore: false });
+      return kugouSearchSongs(kw, limit, offset).then(function (songs) {
+        return { provider: 'kugou', songs: songs, offset: offset, limit: limit, nextOffset: offset + songs.length, hasMore: songs.length >= limit };
+      });
+    },
+
+    '/api/kugou/song/url': function (p) {
+      var hash = p.get('hash') || p.get('fileHash') || p.get('id') || '';
+      var albumId = p.get('albumId') || p.get('album_id') || '';
+      if (!hash) return Promise.resolve({ provider: 'kugou', url: '', playable: false, error: 'MISSING_HASH', message: '缺少歌曲 hash' });
+      return kugouSongUrl(hash, albumId).then(function (r) {
+        if (r.url) {
+          return {
+            provider: 'kugou', url: r.url, trial: false, playable: true, playbackReady: true,
+            level: r.level || 'standard', quality: r.quality || '标准',
+            loggedIn: !!kgState.userid, userId: kgState.userid || ''
+          };
+        }
+        return {
+          provider: 'kugou', url: '', playable: false, trial: false,
+          reason: r.vipRequired ? 'vip_required' : 'login_required',
+          message: r.vipRequired
+            ? '酷狗音乐：该歌曲需要会员/付费权限，可在登录面板粘贴酷狗 Cookie'
+            : ('酷狗音乐：未能获取播放地址' + (r.error ? '（' + r.error + '）' : '')),
+          loggedIn: !!kgState.userid, userId: kgState.userid || ''
+        };
+      });
+    },
+
+    '/api/kugou/lyric': function (p) {
+      var hash = p.get('hash') || p.get('fileHash') || p.get('id') || '';
+      if (!hash) return Promise.resolve({ provider: 'kugou', lyric: '', tlyric: '' });
+      return kugouLyric(hash);
+    },
+
+    '/api/kugou/login/cookie': function (p, init) {
+      var cookie = '';
+      try {
+        if (init && init.body) {
+          var b = typeof init.body === 'string' ? JSON.parse(init.body) : init.body;
+          cookie = b.cookie || b.data || b.text || '';
+        }
+      } catch (e) { }
+      if (!cookie) cookie = p.get('cookie') || '';
+      if (!cookie) return Promise.resolve({ ok: false, logged_in: false, message: 'cookie 为空' });
+      return cookieStoreSet(cookie, '.kugou.com').then(function () {
+        String(cookie).split(';').forEach(function (pair) {
+          var kv = pair.split('=');
+          var k = (kv[0] || '').trim().toLowerCase();
+          var v = kv.slice(1).join('=').trim();
+          if (k === 'kg_mid') kgState.mid = v;
+          if (k === 'kg_dfid') kgState.dfid = v;
+          if (k === 'userid' || k === 'user_id') kgState.userid = v;
+          if (k === 'token') kgState.token = v;
+        });
+        var loggedIn = !!(kgState.userid && kgState.token);
+        return {
+          ok: loggedIn, logged_in: loggedIn, loggedIn: loggedIn,
+          userid: kgState.userid, token: kgState.token ? 'set' : '',
+          nickname: '酷狗用户', playbackReady: loggedIn,
+          message: loggedIn ? '' : 'cookie 里缺少 userid/token（需包含登录后的完整 Cookie）'
+        };
+      });
+    },
+
+    '/api/kugou/login/status': function () {
+      var loggedIn = !!(kgState.userid && kgState.token);
+      return Promise.resolve({ ok: true, logged_in: loggedIn, loggedIn: loggedIn, userid: kgState.userid || '', playbackReady: loggedIn });
+    },
+
+    '/api/kugou/logout': function () {
+      kgState.userid = ''; kgState.token = '';
+      return cookieStoreClear('kugou.com').then(function () { return { ok: true, logged_in: false }; });
+    },
+
     // ---------- 静态能力声明 ----------
     '/api/platform/capabilities': function () {
       return Promise.resolve({
@@ -647,8 +921,6 @@
     // ---------- 安全降级（保持界面可用） ----------
     '/api/user/playlists': function () { return Promise.resolve({ playlist: [], more: false }); },
     '/api/playlist/tracks': function () { return Promise.resolve({ playlist: { tracks: [] } }); },
-    '/api/qq/login/status': function () { return Promise.resolve({ code: -1, message: 'not supported on ios standalone' }); },
-    '/api/kugou/login/status': function () { return Promise.resolve({ ok: false, logged_in: false }); },
     '/api/qishui/status': function () { return Promise.resolve({ ok: false, logged_in: false }); },
     '/api/spotify/status': function () { return Promise.resolve({ ok: false, logged_in: false }); },
     '/api/discover/home': function () { return Promise.resolve({ blocks: [] }); },
