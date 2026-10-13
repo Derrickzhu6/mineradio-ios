@@ -1,0 +1,13 @@
+{
+  "appId": "com.mineradio.ios",
+  "appName": "Mineradio",
+  "webDir": "public",
+  "ios": {
+    "contentInset": "never",
+    "backgroundColor": "#000000",
+    "allowsLinkPreview": false
+  },
+  "server": {
+    "iosScheme": "capacitor"
+  }
+}

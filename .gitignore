@@ -1,0 +1,9 @@
+node_modules/
+ios/App/build/
+ios/App/Pods/
+ios/App/Mineradio.xcarchive/
+ios/App/Mineradio.ipa
+ios/App/Payload/
+ios/App/output/
+.DS_Store
+*.log

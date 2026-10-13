@@ -1,0 +1,71 @@
+name: Build Mineradio iOS IPA
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: 组装工程（下载素材 + 自动打补丁）
+        run: python3 apply.py --out .
+
+      - name: 安装 Capacitor 依赖
+        run: npm install --no-audit --no-fund
+
+      - name: Capacitor sync
+        run: npx cap sync ios
+
+      - name: 构建未签名 IPA（TrollStore / 侧载）
+        run: |
+          set -e
+          cd ios/App
+          xcodebuild archive \
+            -project App.xcodeproj \
+            -scheme App \
+            -configuration Release \
+            -archivePath "$PWD/Mineradio.xcarchive" \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            ENTITLEMENTS_REQUIRED=NO
+          mkdir -p Payload
+          cp -R Mineradio.xcarchive/Products/Applications/*.app Payload/
+          zip -qry Mineradio.ipa Payload
+          ls -la Mineradio.ipa
+          shasum -a 256 Mineradio.ipa
+
+      - name: 发布 IPA 到 Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ios-v2.1.0-${{ github.run_number }}
+          name: "Mineradio iOS 独立版 #${{ github.run_number }}"
+          body: |
+            Mineradio iOS 独立版 —— 全部运行在设备本地，不需要电脑/服务器。
+
+            - 搜索、播放、歌词舞台、粒子视觉（网易云音源）
+            - 二维码登录 / Cookie 登录（登录后支持 VIP 曲目）
+            - 横屏界面、支持后台播放
+
+            **安装**
+            1. TrollStore（iOS 14.0–16.6.1 / 17.0）：直接打开本 IPA 安装
+            2. AltStore / Sideloadly：电脑上一次侧载，免费 Apple ID 每 7 天续签
+
+            未签名构建（CODE_SIGNING_ALLOWED=NO）。仅供个人自用。
+          files: ios/App/Mineradio.ipa
+          make_latest: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
