@@ -2,6 +2,14 @@
   "appId": "com.mineradio.ios",
   "appName": "Mineradio",
   "webDir": "public",
+  "plugins": {
+    "CapacitorHttp": {
+      "enabled": true
+    },
+    "CapacitorCookies": {
+      "enabled": true
+    }
+  },
   "ios": {
     "contentInset": "never",
     "backgroundColor": "#000000",

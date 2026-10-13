@@ -231,14 +231,46 @@ def main():
     write(plist, t.replace(old_orient, new_orient))
     log("已打补丁: Info.plist（横屏 + ATS）")
 
-    # pbxproj：包名/版本
+    # pbxproj：包名/版本 + 把插件文件加入编译（模板里这两个文件没被工程引用）
     pbx = os.path.join(ios_dst, "App", "App.xcodeproj", "project.pbxproj")
     t = read(pbx)
     t = t.replace("PRODUCT_BUNDLE_IDENTIFIER = com.mineradio.v2;",
                   "PRODUCT_BUNDLE_IDENTIFIER = com.mineradio.ios;")
     t = t.replace("MARKETING_VERSION = 1.0;", "MARKETING_VERSION = 2.1.0;")
+
+    swift_bf = "AA00000000000000000000B1"
+    objc_bf = "AA00000000000000000000B2"
+    swift_fr = "AA00000000000000000000F1"
+    objc_fr = "AA00000000000000000000F2"
+
+    build_file_anchor = ("\t\t504EC3081FED79650016851F /* AppDelegate.swift in Sources */ = "
+                         "{isa = PBXBuildFile; fileRef = 504EC3071FED79650016851F /* AppDelegate.swift */; };")
+    file_ref_anchor = ("\t\t504EC3071FED79650016851F /* AppDelegate.swift */ = "
+                       "{isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = \"<group>\"; };")
+    group_anchor = "\t\t\t\t504EC3071FED79650016851F /* AppDelegate.swift */,"
+    sources_anchor = "\t\t\t\t504EC3081FED79650016851F /* AppDelegate.swift in Sources */,"
+
+    must(build_file_anchor in t, "pbxproj 未找到 PBXBuildFile 锚点")
+    must(file_ref_anchor in t, "pbxproj 未找到 PBXFileReference 锚点")
+    must(group_anchor in t, "pbxproj 未找到 group 锚点")
+    must(sources_anchor in t, "pbxproj 未找到 Sources 锚点")
+
+    t = t.replace(build_file_anchor, build_file_anchor + "\n"
+                  "\t\t%s /* MineradioPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = %s /* MineradioPlugin.swift */; };\n"
+                  "\t\t%s /* MineradioPlugin.m in Sources */ = {isa = PBXBuildFile; fileRef = %s /* MineradioPlugin.m */; };" % (swift_bf, swift_fr, objc_bf, objc_fr))
+    t = t.replace(file_ref_anchor, file_ref_anchor + "\n"
+                  "\t\t%s /* MineradioPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MineradioPlugin.swift; sourceTree = \"<group>\"; };\n"
+                  "\t\t%s /* MineradioPlugin.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = MineradioPlugin.m; sourceTree = \"<group>\"; };" % (swift_fr, objc_fr))
+    t = t.replace(group_anchor, group_anchor + "\n"
+                  "\t\t\t\t%s /* MineradioPlugin.swift */,\n"
+                  "\t\t\t\t%s /* MineradioPlugin.m */," % (swift_fr, objc_fr))
+    t = t.replace(sources_anchor, sources_anchor + "\n"
+                  "\t\t\t\t%s /* MineradioPlugin.swift in Sources */,\n"
+                  "\t\t\t\t%s /* MineradioPlugin.m in Sources */," % (swift_bf, objc_bf))
+
+    must("MineradioPlugin.swift in Sources" in t, "pbxproj 插件未被加入编译清单")
     write(pbx, t)
-    log("已打补丁: project.pbxproj（com.mineradio.ios / 2.1.0）")
+    log("已打补丁: project.pbxproj（com.mineradio.ios / 2.1.0 / 插件入编译清单）")
 
     # ---------- 6. 收尾 ----------
     shutil.rmtree(tmp, ignore_errors=True)

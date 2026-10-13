@@ -42,6 +42,43 @@
     return (cap && cap.Plugins && cap.Plugins.Mineradio) || null;
   }
 
+  function cookiesPlugin() {
+    var cap = window.Capacitor;
+    return (cap && cap.Plugins && cap.Plugins.CapacitorCookies) || null;
+  }
+
+  // 写入登录 Cookie：优先自定义原生插件（URLSession 会话），其次官方 CapacitorCookies
+  function cookieStoreSet(cookieStr) {
+    var plugin = nativePlugin();
+    if (plugin && typeof plugin.setCookies === 'function') {
+      return plugin.setCookies({ cookie: cookieStr, domain: '.music.163.com' }).catch(function () { });
+    }
+    var cp = cookiesPlugin();
+    if (!cp || typeof cp.setCookie !== 'function') return Promise.resolve();
+    var tasks = [];
+    String(cookieStr || '').split(';').forEach(function (pair) {
+      var kv = pair.split('=');
+      if (kv.length < 2) return;
+      var k = kv[0].trim();
+      var v = kv.slice(1).join('=').trim();
+      if (!k) return;
+      tasks.push(cp.setCookie({ url: 'https://music.163.com', key: k, value: v }).catch(function () { }));
+    });
+    return Promise.all(tasks);
+  }
+
+  function cookieStoreClear() {
+    var plugin = nativePlugin();
+    if (plugin && typeof plugin.clearCookies === 'function') {
+      return plugin.clearCookies({ domain: 'music.163.com' }).catch(function () { });
+    }
+    var cp = cookiesPlugin();
+    if (cp && typeof cp.clearAllCookies === 'function') {
+      return cp.clearAllCookies().catch(function () { });
+    }
+    return Promise.resolve();
+  }
+
   // 原生 HTTP（App 内）或普通 fetch（浏览器调试）
   function nativeHttp(url, opts) {
     opts = opts || {};
@@ -251,10 +288,7 @@
           out.avatarUrl = httpsify(d.avatarUrl || '');
           accountState.checkedAt = 0; // 下次强制刷新
           // 登录成功：把返回的 cookie 写入原生会话（VIP 曲目播放需要）
-          var plugin = nativePlugin();
-          if (d.cookie && plugin && typeof plugin.setCookies === 'function') {
-            plugin.setCookies({ cookie: d.cookie, domain: '.music.163.com' }).catch(function () { });
-          }
+          if (d.cookie) cookieStoreSet(d.cookie);
         }
         return out;
       });
@@ -269,22 +303,15 @@
         }
       } catch (e) { }
       if (!cookie) cookie = p.get('cookie') || '';
-      var plugin = nativePlugin();
-      if (!cookie || !plugin || typeof plugin.setCookies !== 'function') {
-        return Promise.resolve({ ok: false, error: 'cookie_unavailable' });
-      }
-      return plugin.setCookies({ cookie: cookie, domain: '.music.163.com' }).then(function () {
+      if (!cookie) return Promise.resolve({ ok: false, error: 'cookie_unavailable' });
+      return cookieStoreSet(cookie).then(function () {
         accountState.checkedAt = 0;
         return HANDLERS['/api/login/status'](new URLSearchParams());
       });
     },
 
     '/api/logout': function () {
-      var plugin = nativePlugin();
-      var done = (plugin && typeof plugin.clearCookies === 'function')
-        ? plugin.clearCookies({ domain: 'music.163.com' })
-        : Promise.resolve();
-      return done.then(function () {
+      return cookieStoreClear().then(function () {
         accountState = { loggedIn: false, checkedAt: 0, profile: null };
         return { ok: true, loggedIn: false };
       });
