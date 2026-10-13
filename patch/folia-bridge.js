@@ -364,9 +364,33 @@
     '/kgapi/song/climax': function () { return Promise.resolve({ status: 0, data: [] }); },
     '/kgapi/audio': function () { return Promise.resolve({ status: 0, data: { play_url: '' } }); },
     '/kgapi/krm/audio': function () { return Promise.resolve({ status: 0, data: { play_url: '' } }); },
-    '/kgapi/login/qr/key': function () { return Promise.resolve({ status: 0, error: 'standalone: 酷狗扫码登录暂未接入' }); },
-    '/kgapi/login/qr/create': function () { return Promise.resolve({ status: 0, error: 'standalone: 酷狗扫码登录暂未接入' }); },
-    '/kgapi/login/qr/check': function () { return Promise.resolve({ status: 0, error: 'standalone: 酷狗扫码登录暂未接入' }); },
+    // 扫码登录：走与 Mineradio 同一套实现（login-user.kugou.com + web 签名）
+    '/kgapi/login/qr/key': function () {
+      return B.kugouQrKey().then(function (r) {
+        return { status: 1, data: { qrcode: r.key } };
+      }).catch(function (e) {
+        return { status: 0, errcode: 502, error: String((e && e.message) || e).slice(0, 120) };
+      });
+    },
+    '/kgapi/login/qr/create': function (p) {
+      var key = p.get('key') || '';
+      if (!key) return Promise.resolve({ status: 0, errcode: 400, error: 'missing key' });
+      return B.kugouQrCreate(key).then(function (r) {
+        return { status: 1, data: { url: r.qrurl, base64: r.img } };
+      });
+    },
+    '/kgapi/login/qr/check': function (p) {
+      var key = p.get('key') || p.get('qrcode') || '';
+      if (!key) return Promise.resolve({ status: 1, data: { status: 0 } });
+      return B.kugouQrCheck(key).then(function (r) {
+        var out = { status: 1, data: { status: r.status } };
+        if (r.loggedIn) {
+          out.data.token = r.token === 'set' ? '' : (r.token || '');
+          out.data.userid = r.userid || r.userId || '';
+        }
+        return out;
+      });
+    },
     '/kgapi/logout': function () { return Promise.resolve({ status: 1 }); },
     '/kgapi/user/detail': function () { return Promise.resolve({ status: 0, data: null }); },
     '/kgapi/user/playlist': function () { return Promise.resolve({ status: 1, data: { info: [], total: 0 } }); },

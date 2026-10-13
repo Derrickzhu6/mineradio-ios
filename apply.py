@@ -214,7 +214,7 @@ def main():
         shutil.copy(os.path.join(PATCH_DIR, "ios", fn), os.path.join(app_dir, fn))
     log("替换 MineradioPlugin.swift/.m（原生 HTTP 通道）")
 
-    # Info.plist：横屏 + 允许任意 http 资源
+    # Info.plist：横竖屏都允许（画面比例由 H5 内的自适应缩放处理，不再强制横屏）+ 允许任意 http 资源
     plist = os.path.join(app_dir, "Info.plist")
     t = read(plist)
     old_orient = ("\t<key>UISupportedInterfaceOrientations</key>\n\t<array>\n"
@@ -222,14 +222,61 @@ def main():
                   "\t\t<string>UIInterfaceOrientationLandscapeLeft</string>\n"
                   "\t\t<string>UIInterfaceOrientationLandscapeRight</string>\n\t</array>")
     new_orient = ("\t<key>UISupportedInterfaceOrientations</key>\n\t<array>\n"
+                  "\t\t<string>UIInterfaceOrientationPortrait</string>\n"
                   "\t\t<string>UIInterfaceOrientationLandscapeLeft</string>\n"
                   "\t\t<string>UIInterfaceOrientationLandscapeRight</string>\n\t</array>\n"
                   "\t<key>NSAppTransportSecurity</key>\n\t<dict>\n"
                   "\t\t<key>NSAllowsArbitraryLoads</key>\n\t\t<true/>\n"
-                  "\t\t<key>NSAllowsArbitraryLoadsInWebContent</key>\n\t\t<true/>\n\t</dict>")
+                  "\t\t<key>NSAllowsArbitraryLoadsInWebContent</key>\n\t\t<true/>\n\t</dict>\n"
+                  "\t<key>UIRequiresFullScreen</key>\n\t<true/>\n"
+                  "\t<key>CFBundleDisplayName</key>\n\t<string>Mineradio</string>")
     must(old_orient in t, "Info.plist 未找到方向配置锚点")
     write(plist, t.replace(old_orient, new_orient))
-    log("已打补丁: Info.plist（横屏 + ATS）")
+    log("已打补丁: Info.plist（三方向 + ATS + 显示名）")
+
+    # ---------- 5c. App 图标：用仓库内置的真图标替换骨架占位 ----------
+    # 骨架里的图标是占位图，装到手机上桌面显示为空白。这里统一换成 Mineradio 官方图标。
+    icon_src = os.path.join(PATCH_DIR, "assets", "mineradio-icon.png")
+    iconset = os.path.join(ios_dst, "App", "App", "Assets.xcassets", "AppIcon.appiconset")
+    if os.path.exists(icon_src) and os.path.isdir(iconset):
+        # 1) 标准单尺寸位图：无论骨架里有没有这个文件名都写一份，Contents.json 指向它
+        shutil.copy(icon_src, os.path.join(iconset, "AppIcon-512@2x.png"))
+        # 2) 顺手覆盖骨架里可能存在的旧命名，避免残留占位图
+        for fn in ("icon-1024.jpg", "icon1024.png", "AppIcon.png"):
+            p = os.path.join(iconset, fn)
+            if os.path.exists(p):
+                shutil.copy(icon_src, p)
+        # 2) 重写 Contents.json：ios-marketing 1024x1024 指向 AppIcon-512@2x.png，
+        #    其余尺寸 iOS 会自动从 1024 位图缩放（单尺寸图标是 Xcode 13+ 的标准做法）
+        contents = {
+            "images": [
+                {"filename": "AppIcon-512@2x.png", "idiom": "universal", "platform": "ios", "size": "1024x1024"}
+            ],
+            "info": {"author": "xcode", "version": 1}
+        }
+        import json as _json
+        with open(os.path.join(iconset, "Contents.json"), "w", encoding="utf-8") as f:
+            _json.dump(contents, f, indent=2)
+        # 3) 启动图占位也刷一遍，避免启动时闪默认图
+        for name in ("Splash.imageset",):
+            sp = os.path.join(ios_dst, "App", "App", "Assets.xcassets", name)
+            if os.path.isdir(sp):
+                for fn in ("splash-2732x2732.png", "splash-2732x2732-1.png", "splash-2732x2732-2.png"):
+                    fp = os.path.join(sp, fn)
+                    if os.path.exists(fp):
+                        shutil.copy(icon_src, fp)
+                        try:
+                            from PIL import Image
+                            im = Image.open(fp).convert("RGB")
+                            im.thumbnail((2732, 2732))
+                            bg = Image.new("RGB", (2732, 2732), (10, 10, 12))
+                            bg.paste(im, ((2732 - im.width) // 2, (2732 - im.height) // 2))
+                            bg.save(fp)
+                        except Exception:
+                            pass
+        log("已替换 App 图标与启动图（Mineradio 官方图 1024x1024）")
+    else:
+        must(False, "缺图标素材或 iconset 目录: %s / %s" % (icon_src, iconset))
 
     # pbxproj：包名/版本 + 把插件文件加入编译（模板里这两个文件没被工程引用）
     pbx = os.path.join(ios_dst, "App", "App.xcodeproj", "project.pbxproj")
@@ -281,7 +328,7 @@ def main():
         (os.path.join(public, "js", "vendor", "qrcode.js"), "二维码库"),
         (os.path.join(app_dir, "MineradioPlugin.swift"), "原生插件"),
         (os.path.join(ios_dst, "App", "App.xcodeproj", "project.pbxproj"), "Xcode 工程"),
-        (os.path.join(ios_dst, "App", "App", "Assets.xcassets", "AppIcon.appiconset", "icon-1024.jpg"), "App 图标"),
+        (os.path.join(ios_dst, "App", "App", "Assets.xcassets", "AppIcon.appiconset", "AppIcon-512@2x.png"), "App 图标"),
     ]
     for path, name in checks:
         must(os.path.exists(path), "缺失: " + name + " -> " + path)
