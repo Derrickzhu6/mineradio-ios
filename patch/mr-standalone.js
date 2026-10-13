@@ -1375,6 +1375,37 @@
     });
   }
 
+  // ---------- 横屏 / 竖屏双向适配 ----------
+  // 竖屏时给内容一个「横屏设计最小宽度」，让它不压缩而是溢出，再由自动 zoom 等比缩小，
+  // 最后垂直居中 + 背景填充。结果：横屏、竖屏都是完整且不变形的画面。
+  var MR_PORTRAIT_MIN_W = 900;
+
+  function ensureFitStyle() {
+    if (document.getElementById('mr-fit-style')) return;
+    var st = document.createElement('style');
+    st.id = 'mr-fit-style';
+    st.textContent = [
+      /* 竖屏：把缩放后的横屏画布垂直居中，上下用背景色填满，避免出现大片空白错位 */
+      'html.mr-portrait-fit{background:#0a0a0c;display:flex;align-items:center;justify-content:center;',
+      'min-height:100vh;overflow-x:hidden;}',
+      'html.mr-portrait-fit>body{flex:0 0 auto;}'
+    ].join('');
+    document.head.appendChild(st);
+  }
+
+  function updateOrientationFit() {
+    var portrait = window.innerHeight > window.innerWidth;
+    var de = document.documentElement;
+    if (portrait && window.__MR_LANDSCAPE_ONLY__) {
+      ensureFitStyle();
+      de.classList.add('mr-portrait-fit');
+      document.body.style.minWidth = MR_PORTRAIT_MIN_W + 'px';
+    } else {
+      de.classList.remove('mr-portrait-fit');
+      document.body.style.minWidth = '';
+    }
+  }
+
   function initScreenFit() {
     try {
       // 允许延伸到安全区；缩放范围放宽，配合下面的自动 zoom
@@ -1406,10 +1437,18 @@
     });
 
     var ro = window.addEventListener.bind(window);
-    ro('resize', function () { if (fitState.mode === 'auto') applyFit('auto'); });
-    ro('orientationchange', function () {
-      setTimeout(function () { if (fitState.mode === 'auto') applyFit('auto'); }, 500);
+    ro('resize', function () {
+      if (fitState.mode === 'auto') applyFit('auto');
+      if (window.__MR_LANDSCAPE_ONLY__) updateOrientationFit();
     });
+    ro('orientationchange', function () {
+      setTimeout(function () {
+        if (fitState.mode === 'auto') applyFit('auto');
+        if (window.__MR_LANDSCAPE_ONLY__) updateOrientationFit();
+      }, 500);
+    });
+
+    if (window.__MR_LANDSCAPE_ONLY__) updateOrientationFit();
 
     try {
       if (localStorage.getItem('mr_ios_fit_hidden') === '1') return;

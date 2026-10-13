@@ -166,7 +166,8 @@ def main():
     must(anchor in text, "index.html 未找到 capacitor-bridge 锚点")
     text = text.replace(
         anchor,
-        '<script src="js/vendor/qrcode.js"></script>\n'
+        '<script>window.__MR_LANDSCAPE_ONLY__=1;</script>\n'
+        '  <script src="js/vendor/qrcode.js"></script>\n'
         '  <script src="js/mr-standalone.js"></script>\n  ' + anchor)
     write(idx, text)
     log("已打补丁: index.html（去外链字体 + 挂载桥接层）")
